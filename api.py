@@ -7,6 +7,7 @@ import datetime
 import logging
 import hashlib
 import uuid
+import re
 from argparse import ArgumentParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -37,35 +38,124 @@ GENDERS = {
 
 
 class CharField(object):
-    pass
+    def __init__(self, required=True, nullable=False):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        if value is None:
+            if not self.nullable:
+                raise ValueError("Field cannot be null")
+        elif not isinstance(value, str):
+            raise TypeError("Field must be a string")
+        return value
 
 
 class ArgumentsField(object):
-    pass
+    def __init__(self, required=True, nullable=False):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        if value is None:
+            if not self.nullable:
+                raise ValueError("Field cannot be null")
+        elif not isinstance(value, dict):
+            raise TypeError("Field must be a dict")
+        return value
 
 
 class EmailField(CharField):
-    pass
+    EMAIL_PATTERN = re.compile(r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+")
+
+    def validate(self, value):
+        super().validate(value)
+
+        if not self.EMAIL_PATTERN.match(value):
+            raise ValueError("Field must be an email format")
+
+        return value
 
 
 class PhoneField(object):
-    pass
+    def __init__(self, required=False, nullable=True):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        if not isinstance(value, (int, str)):
+            raise TypeError("Field must be int or str")
+
+        str_value = str(value)
+        if len(str_value) != 11:
+            raise ValueError("Field must have 11 figures")
+        elif str_value[0] != '7':
+            raise ValueError("Field must start from 7")
+        return value
 
 
 class DateField(object):
-    pass
+    def __init__(self, required=False, nullable=True):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        if value is None:
+            if not self.nullable:
+                raise ValueError("Field cannot be null")
+        elif not isinstance(value, str):
+            raise TypeError("Date format must be str")
+        try:
+            value_date = datetime.datetime.strptime(value, "%d.%m.%Y")
+        except:
+            raise ValueError("Time data does not match format '%d.%m.%Y'")
+        return value
 
 
-class BirthDayField(object):
-    pass
+class BirthDayField(DateField):
+
+    def validate(self, value):
+        super().validate(value)
+
+        date_now = datetime.datetime.now()
+        value_date = datetime.datetime.strptime(value, "%d.%m.%Y")
+        difference = date_now - value_date
+        if difference.days > 25570:
+            raise ValueError("Birthday must be < 70 years")
+        return value
 
 
 class GenderField(object):
-    pass
+    def __init__(self, required=False, nullable=True):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        if value is None:
+            if not self.nullable:
+                raise ValueError("Field cannot be null")
+        elif not isinstance(value, int):
+            raise TypeError("Field must be int")
+        elif not value in [0, 1, 2]:
+            raise ValueError("Value must be 0 or 1 or 2")
+        return value
 
 
 class ClientIDsField(object):
-    pass
+    def __init__(self, required=True, nullable=False):
+        self.required = required
+        self.nullable = nullable
+
+    def validate(self, value):
+        if value is None:
+            if not self.nullable:
+                raise ValueError("Field cannot be null")
+        elif not isinstance(value, list):
+            raise TypeError("Field must be a list")
+        elif not all(isinstance(x, int) for x in value):
+            raise TypeError("All list items must be int")
+        return value
+
 
 
 class ClientsInterestsRequest(object):
