@@ -11,6 +11,8 @@ import re
 from argparse import ArgumentParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from descriptor import Field
+
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
 ADMIN_SALT = "42"
@@ -37,123 +39,53 @@ GENDERS = {
 }
 
 
-class CharField(object):
-    def __init__(self, required=True, nullable=False):
-        self.required = required
-        self.nullable = nullable
-
+class CharField(Field):
     def validate(self, value):
-        if value is None:
-            if not self.nullable:
-                raise ValueError("Field cannot be null")
-        elif not isinstance(value, str):
-            raise TypeError("Field must be a string")
+        super().validate_char_field(value)
         return value
 
 
-class ArgumentsField(object):
-    def __init__(self, required=True, nullable=False):
-        self.required = required
-        self.nullable = nullable
-
+class ArgumentsField(Field):
     def validate(self, value):
-        if value is None:
-            if not self.nullable:
-                raise ValueError("Field cannot be null")
-        elif not isinstance(value, dict):
-            raise TypeError("Field must be a dict")
+        super().validate_arguments_field(value)
         return value
 
 
 class EmailField(CharField):
-    EMAIL_PATTERN = re.compile(r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+")
-
     def validate(self, value):
-        super().validate(value)
-
-        if not self.EMAIL_PATTERN.match(value):
-            raise ValueError("Field must be an email format")
-
+        super().validate_char_field(value)
+        super().validate_email_field(value)
         return value
 
 
-class PhoneField(object):
-    def __init__(self, required=False, nullable=True):
-        self.required = required
-        self.nullable = nullable
-
+class PhoneField(Field):
     def validate(self, value):
-        if not isinstance(value, (int, str)):
-            raise TypeError("Field must be int or str")
-
-        str_value = str(value)
-        if len(str_value) != 11:
-            raise ValueError("Field must have 11 figures")
-        elif str_value[0] != '7':
-            raise ValueError("Field must start from 7")
+        super().validate_phone_field(value)
         return value
 
 
-class DateField(object):
-    def __init__(self, required=False, nullable=True):
-        self.required = required
-        self.nullable = nullable
-
+class DateField(Field):
     def validate(self, value):
-        if value is None:
-            if not self.nullable:
-                raise ValueError("Field cannot be null")
-        elif not isinstance(value, str):
-            raise TypeError("Date format must be str")
-        try:
-            value_date = datetime.datetime.strptime(value, "%d.%m.%Y")
-        except:
-            raise ValueError("Time data does not match format '%d.%m.%Y'")
+        super().validate_date_field(value)
         return value
 
 
 class BirthDayField(DateField):
-
     def validate(self, value):
-        super().validate(value)
-
-        date_now = datetime.datetime.now()
-        value_date = datetime.datetime.strptime(value, "%d.%m.%Y")
-        difference = date_now - value_date
-        if difference.days > 25570:
-            raise ValueError("Birthday must be < 70 years")
+        super().validate_date_field(value)
+        super().validate_birthday_field(value)
         return value
 
 
-class GenderField(object):
-    def __init__(self, required=False, nullable=True):
-        self.required = required
-        self.nullable = nullable
-
+class GenderField(Field):
     def validate(self, value):
-        if value is None:
-            if not self.nullable:
-                raise ValueError("Field cannot be null")
-        elif not isinstance(value, int):
-            raise TypeError("Field must be int")
-        elif not value in [0, 1, 2]:
-            raise ValueError("Value must be 0 or 1 or 2")
+        super().validate_gender_field(value)
         return value
 
 
-class ClientIDsField(object):
-    def __init__(self, required=True, nullable=False):
-        self.required = required
-        self.nullable = nullable
-
+class ClientIDsField(Field):
     def validate(self, value):
-        if value is None:
-            if not self.nullable:
-                raise ValueError("Field cannot be null")
-        elif not isinstance(value, list):
-            raise TypeError("Field must be a list")
-        elif not all(isinstance(x, int) for x in value):
-            raise TypeError("All list items must be int")
+        super().validate_client_ids_field(value)
         return value
 
 
