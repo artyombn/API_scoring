@@ -12,6 +12,7 @@ from argparse import ArgumentParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from descriptor import Field
+from scoring import get_interests, get_score
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -103,6 +104,9 @@ class OnlineScoreRequest(object):
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
 
+    def to_dict(self):
+        return {attr: getattr(self, attr) for attr in self.__class__.__dict__ if not attr.startswith("_")}
+
 
 class MethodRequest(object):
     account = CharField(required=False, nullable=True)
@@ -115,7 +119,6 @@ class MethodRequest(object):
     def is_admin(self):
         return self.login == ADMIN_LOGIN
 
-
 def check_auth(request):
     if request.is_admin:
         digest = hashlib.sha512((datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode('utf-8')).hexdigest()
@@ -125,7 +128,81 @@ def check_auth(request):
 
 
 def method_handler(request, ctx, store):
-    response, code = None, None
+    response = {}
+    code = OK
+
+    body = request.get("body", {})
+    method = body.get("method")
+
+    method_request = MethodRequest()
+    try:
+        method_request.login = body.get("login")
+        method_request.token = body.get("token")
+        method_request.account = body.get("account", None)
+        method_request.method = method
+        method_request.arguments = body.get("arguments", {})
+    except ValueError as e:
+        return str(e), INVALID_REQUEST
+
+    if method == "online_score":
+        online_score_request = OnlineScoreRequest()
+
+        try:
+            online_score_request.phone = method_request.arguments.get("phone", None)
+            online_score_request.email = method_request.arguments.get("email", None)
+            online_score_request.birthday = method_request.arguments.get("birthday", None)
+            online_score_request.gender = method_request.arguments.get("gender", None)
+            online_score_request.first_name = method_request.arguments.get("first_name", None)
+            online_score_request.last_name = method_request.arguments.get("last_name", None)
+        except TypeError as e:
+            return str(e), INVALID_REQUEST
+        except ValueError as e:
+            return str(e), INVALID_REQUEST
+
+        arguments_list = []
+        for argument in online_score_request.to_dict():
+            if online_score_request.to_dict()[argument] is None:
+                continue
+            arguments_list.append(argument)
+        ctx["has"] = arguments_list[:-1]
+
+        if method_request.is_admin:
+            response = {"score": 42}
+        else:
+            if not check_auth(method_request):
+                return ERRORS[FORBIDDEN], FORBIDDEN
+
+            score = get_score(store,
+                              online_score_request.phone,
+                              online_score_request.email,
+                              online_score_request.birthday,
+                              online_score_request.gender,
+                              online_score_request.first_name,
+                              online_score_request.last_name,
+            )
+            response = {"score": score}
+
+    if method == "clients_interests":
+        clients_interests_request = ClientsInterestsRequest()
+
+        try:
+            clients_interests_request.client_ids = method_request.arguments.get("client_ids")
+            clients_interests_request.date = method_request.arguments.get("date", None)
+        except TypeError as e:
+            return str(e), INVALID_REQUEST
+        except ValueError as e:
+            return str(e), INVALID_REQUEST
+
+        if not method_request.is_admin:
+            return ERRORS[FORBIDDEN], FORBIDDEN
+
+        clients_interests_dict = {}
+        for client_id in clients_interests_request.client_ids:
+            if client_id in clients_interests_dict:
+                continue
+            clients_interests_dict[client_id] = get_interests(store, client_id)
+        response = clients_interests_dict
+
     return response, code
 
 

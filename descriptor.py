@@ -6,6 +6,7 @@ class Field:
     def __init__(self, required=True, nullable=False):
         self.required = required
         self.nullable = nullable
+        self._value = None
 
     def __get__(self, obj, cls):
         return self._value
@@ -18,16 +19,19 @@ class Field:
         if val is None:
             if not self.nullable:
                 raise ValueError("Field cannot be null")
-        return val
+            return True
+        return False
 
     def validate_char_field(self, val):
-        self.check_none(val)
+        if self.check_none(val):
+            return val
         if not isinstance(val, str):
             raise TypeError("Field must be a string")
         return val
 
     def validate_arguments_field(self, val):
-        self.check_none(val)
+        if self.check_none(val):
+            return val
         if not isinstance(val, dict):
             raise TypeError("Field must be a dict")
         return val
@@ -35,13 +39,15 @@ class Field:
     def validate_email_field(self, val):
         EMAIL_PATTERN = re.compile(r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+")
 
-        self.check_none(val)
+        if self.check_none(val):
+            return val
         if not EMAIL_PATTERN.match(val):
             raise ValueError("Field must be an email format")
         return val
 
     def validate_phone_field(self, val):
-        self.check_none(val)
+        if self.check_none(val):
+            return val
         if not isinstance(val, (int, str)):
             raise TypeError("Field must be int or str")
 
@@ -53,13 +59,14 @@ class Field:
         return val
 
     def validate_date_field(self, val):
-        if not self.check_none(val) is None:
-            if not isinstance(val, str):
-                raise TypeError("Date format must be str")
-            try:
-                value_date = datetime.datetime.strptime(val, "%d.%m.%Y")
-            except:
-                raise ValueError("Time data does not match format '%d.%m.%Y'")
+        if self.check_none(val):
+            return val
+        if not isinstance(val, str):
+            raise TypeError("Date format must be str")
+        try:
+            datetime.datetime.strptime(val, "%d.%m.%Y")
+        except ValueError:
+            raise ValueError("Time data does not match format '%d.%m.%Y'")
         return val
 
     def validate_birthday_field(self, val):
@@ -72,7 +79,8 @@ class Field:
         return val
 
     def validate_gender_field(self, val):
-        self.check_none(val)
+        if self.check_none(val):
+            return val
         if not isinstance(val, int):
             raise TypeError("Field must be int")
         elif not val in [0, 1, 2]:
@@ -80,7 +88,6 @@ class Field:
         return val
 
     def validate_client_ids_field(self, val):
-        self.check_none(val)
         if not isinstance(val, list):
             raise TypeError("Field must be a list")
         elif not all(isinstance(x, int) for x in val):
