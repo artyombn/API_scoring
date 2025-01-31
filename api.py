@@ -54,7 +54,6 @@ class ArgumentsField(Field):
 
 class EmailField(CharField):
     def validate(self, value):
-        super().validate_char_field(value)
         super().validate_email_field(value)
         return value
 

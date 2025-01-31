@@ -41,9 +41,12 @@ class Field:
 
         if self.check_none(val):
             return val
-        if not EMAIL_PATTERN.match(val):
-            raise ValueError("Field must be an email format")
-        return val
+        if isinstance(val, str):
+            if not EMAIL_PATTERN.match(val):
+                raise ValueError("Field must be an email format")
+            return val
+        raise TypeError("Field must be a string")
+
 
     def validate_phone_field(self, val):
         if self.check_none(val):
