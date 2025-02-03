@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import abc
-import json
 import datetime
-import logging
 import hashlib
+import json
+import logging
 import uuid
-import re
 from argparse import ArgumentParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -88,13 +86,12 @@ class ClientIDsField(Field):
         return value
 
 
-
-class ClientsInterestsRequest(object):
+class ClientsInterestsRequest:
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
 
 
-class OnlineScoreRequest(object):
+class OnlineScoreRequest:
     first_name = CharField(required=False, nullable=True)
     last_name = CharField(required=False, nullable=True)
     email = EmailField(required=False, nullable=True)
@@ -103,10 +100,14 @@ class OnlineScoreRequest(object):
     gender = GenderField(required=False, nullable=True)
 
     def to_dict(self):
-        return {attr: getattr(self, attr) for attr in self.__class__.__dict__ if not attr.startswith("_")}
+        return {
+            attr: getattr(self, attr)
+            for attr in self.__class__.__dict__
+            if not attr.startswith("_")
+        }
 
 
-class MethodRequest(object):
+class MethodRequest:
     account = CharField(required=False, nullable=True)
     login = CharField(required=True, nullable=True)
     token = CharField(required=True, nullable=True)
@@ -127,12 +128,95 @@ class MethodRequest(object):
     def is_admin(self):
         return self.login == ADMIN_LOGIN
 
+
 def check_auth(request):
     if request.is_admin:
-        digest = hashlib.sha512((datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode('utf-8')).hexdigest()
+        digest = hashlib.sha512(
+            (datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode("utf-8")
+        ).hexdigest()
     else:
-        digest = hashlib.sha512((request.account + request.login + SALT).encode('utf-8')).hexdigest()
+        digest = hashlib.sha512(
+            (request.account + request.login + SALT).encode("utf-8")
+        ).hexdigest()
     return digest == request.token
+
+
+def parse_method_request(body):
+    method_request = MethodRequest()
+    method_request.login = body.get("login", "")
+    method_request.token = body.get("token", "")
+    method_request.account = body.get("account", "")
+    method_request.method = body.get("method")
+    method_request.arguments = body.get("arguments", {})
+    return method_request
+
+
+def handle_online_score(method_request, ctx, store):
+    online_score_request = OnlineScoreRequest()
+
+    try:
+        online_score_request.phone = method_request.arguments.get("phone", "")
+        online_score_request.email = method_request.arguments.get("email", "")
+        online_score_request.birthday = method_request.arguments.get("birthday", "")
+        online_score_request.gender = method_request.arguments.get("gender", "")
+        online_score_request.first_name = method_request.arguments.get("first_name", "")
+        online_score_request.last_name = method_request.arguments.get("last_name", "")
+
+        arguments_list = []
+        for argument in online_score_request.to_dict():
+            if (
+                online_score_request.to_dict()[argument] is None
+                or online_score_request.to_dict()[argument] == ""
+            ):
+                continue
+            arguments_list.append(argument)
+        ctx["has"] = arguments_list[:-1]
+
+        if not {"phone", "email"}.issubset(set(ctx["has"])):
+            if not {"first_name", "last_name"}.issubset(set(ctx["has"])):
+                if not {"gender", "birthday"}.issubset(set(ctx["has"])):
+                    raise ValueError(ERRORS[INVALID_REQUEST])
+    except TypeError as e:
+        return str(e), INVALID_REQUEST
+    except ValueError as e:
+        return str(e), INVALID_REQUEST
+
+    if method_request.is_admin:
+        return {"score": 42}, OK
+
+    score = get_score(
+        store,
+        online_score_request.phone,
+        online_score_request.email,
+        online_score_request.birthday,
+        online_score_request.gender,
+        online_score_request.first_name,
+        online_score_request.last_name,
+    )
+    return {"score": score}, OK
+
+
+def handle_clients_interests(method_request, ctx, store):
+    clients_interests_request = ClientsInterestsRequest()
+
+    try:
+        clients_interests_request.client_ids = method_request.arguments.get(
+            "client_ids"
+        )
+        clients_interests_request.date = method_request.arguments.get("date", None)
+
+        ctx["nclients"] = len(clients_interests_request.client_ids)
+    except TypeError as e:
+        return str(e), INVALID_REQUEST
+    except ValueError as e:
+        return str(e), INVALID_REQUEST
+
+    clients_interests_dict = {}
+    for client_id in clients_interests_request.client_ids:
+        if client_id in clients_interests_dict:
+            continue
+        clients_interests_dict[client_id] = get_interests(store, client_id)
+    return clients_interests_dict, OK
 
 
 def method_handler(request, ctx, store):
@@ -142,15 +226,8 @@ def method_handler(request, ctx, store):
     body = request.get("body", {})
     method = body.get("method")
 
-
-    method_request = MethodRequest()
-
     try:
-        method_request.login = body.get("login", "")
-        method_request.token = body.get("token", "")
-        method_request.account = body.get("account", "")
-        method_request.method = method
-        method_request.arguments = body.get("arguments", {})
+        method_request = parse_method_request(body)
 
         if not check_auth(method_request):
             return ERRORS[FORBIDDEN], FORBIDDEN
@@ -160,85 +237,27 @@ def method_handler(request, ctx, store):
         return str(e), INVALID_REQUEST
 
     if method == "online_score":
-        online_score_request = OnlineScoreRequest()
-
-        try:
-            online_score_request.phone = method_request.arguments.get("phone", "")
-            online_score_request.email = method_request.arguments.get("email", "")
-            online_score_request.birthday = method_request.arguments.get("birthday", "")
-            online_score_request.gender = method_request.arguments.get("gender", "")
-            online_score_request.first_name = method_request.arguments.get("first_name", "")
-            online_score_request.last_name = method_request.arguments.get("last_name", "")
-
-            arguments_list = []
-            for argument in online_score_request.to_dict():
-                if online_score_request.to_dict()[argument] is None or online_score_request.to_dict()[argument] == "":
-                    continue
-                arguments_list.append(argument)
-            ctx["has"] = arguments_list[:-1]
-
-            if not {"phone", "email"}.issubset(set(ctx["has"])):
-                if not {"first_name", "last_name"}.issubset(set(ctx["has"])):
-                    if not {"gender", "birthday"}.issubset(set(ctx["has"])):
-                        raise ValueError(ERRORS[INVALID_REQUEST])
-
-        except TypeError as e:
-            return str(e), INVALID_REQUEST
-        except ValueError as e:
-            return str(e), INVALID_REQUEST
-
-        if method_request.is_admin:
-            response = {"score": 42}
-        else:
-            score = get_score(store,
-                              online_score_request.phone,
-                              online_score_request.email,
-                              online_score_request.birthday,
-                              online_score_request.gender,
-                              online_score_request.first_name,
-                              online_score_request.last_name,
-            )
-            response = {"score": score}
+        return handle_online_score(method_request, ctx, store)
 
     if method == "clients_interests":
-        clients_interests_request = ClientsInterestsRequest()
-
-        try:
-            clients_interests_request.client_ids = method_request.arguments.get("client_ids")
-            clients_interests_request.date = method_request.arguments.get("date", None)
-
-            ctx["nclients"] = len(clients_interests_request.client_ids)
-
-        except TypeError as e:
-            return str(e), INVALID_REQUEST
-        except ValueError as e:
-            return str(e), INVALID_REQUEST
-
-        clients_interests_dict = {}
-        for client_id in clients_interests_request.client_ids:
-            if client_id in clients_interests_dict:
-                continue
-            clients_interests_dict[client_id] = get_interests(store, client_id)
-        response = clients_interests_dict
+        return handle_clients_interests(method_request, ctx, store)
 
     return response, code
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
-    router = {
-        "method": method_handler
-    }
+    router = {"method": method_handler}
     store = None
 
     def get_request_id(self, headers):
-        return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)
+        return headers.get("HTTP_X_REQUEST_ID", uuid.uuid4().hex)
 
     def do_POST(self):
         response, code = {}, OK
         context = {"request_id": self.get_request_id(self.headers)}
         request = None
         try:
-            data_string = self.rfile.read(int(self.headers['Content-Length']))
+            data_string = self.rfile.read(int(self.headers["Content-Length"]))
             request = json.loads(data_string)
         except:
             code = BAD_REQUEST
@@ -248,7 +267,9 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             logging.info("%s: %s %s" % (self.path, data_string, context["request_id"]))
             if path in self.router:
                 try:
-                    response, code = self.router[path]({"body": request, "headers": self.headers}, context, self.store)
+                    response, code = self.router[path](
+                        {"body": request, "headers": self.headers}, context, self.store
+                    )
                 except Exception as e:
                     logging.exception("Unexpected error: %s" % e)
                     code = INTERNAL_ERROR
@@ -264,7 +285,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
             r = {"error": response or ERRORS.get(code, "Unknown Error"), "code": code}
         context.update(r)
         logging.info(context)
-        self.wfile.write(json.dumps(r).encode('utf-8'))
+        self.wfile.write(json.dumps(r).encode("utf-8"))
         return
 
 
@@ -273,8 +294,12 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--port", action="store", type=int, default=8080)
     parser.add_argument("-l", "--log", action="store", default=None)
     args = parser.parse_args()
-    logging.basicConfig(filename=args.log, level=logging.INFO,
-                        format='[%(asctime)s] %(levelname).1s %(message)s', datefmt='%Y.%m.%d %H:%M:%S')
+    logging.basicConfig(
+        filename=args.log,
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname).1s %(message)s",
+        datefmt="%Y.%m.%d %H:%M:%S",
+    )
     server = HTTPServer(("localhost", args.port), MainHTTPHandler)
     logging.info("Starting server at %s" % args.port)
     try:

@@ -1,5 +1,5 @@
-import re
 import datetime
+import re
 
 
 class Field:
@@ -17,6 +17,7 @@ class Field:
 
     def check_none(self, val):
         from api import ERRORS, INVALID_REQUEST
+
         if val is None or val == "":
             if not self.nullable:
                 raise ValueError(ERRORS[INVALID_REQUEST])
@@ -38,7 +39,9 @@ class Field:
         return val
 
     def validate_email_field(self, val):
-        EMAIL_PATTERN = re.compile(r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+")
+        EMAIL_PATTERN = re.compile(
+            r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+"
+        )
 
         if self.check_none(val):
             return val
@@ -47,7 +50,6 @@ class Field:
                 raise ValueError("Field must be an email format")
             return val
         raise TypeError("Field must be a string")
-
 
     def validate_phone_field(self, val):
         if self.check_none(val):
@@ -58,7 +60,7 @@ class Field:
         str_value = str(val)
         if len(str_value) != 11:
             raise ValueError("Field must have 11 figures")
-        elif str_value[0] != '7':
+        if str_value[0] != "7":
             raise ValueError("Field must start from 7")
         return val
 
@@ -71,8 +73,8 @@ class Field:
 
         try:
             value_date = datetime.datetime.strptime(val, "%d.%m.%Y")
-        except ValueError:
-            raise ValueError("Time data does not match format '%d.%m.%Y'")
+        except ValueError as exc:
+            raise ValueError("Time data does not match format '%d.%m.%Y'") from exc
 
         date_now = datetime.datetime.now()
         difference = date_now - value_date
