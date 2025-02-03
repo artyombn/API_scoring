@@ -7,7 +7,7 @@ from descriptor import Field
     "nullable, val, res, expectation",
     [
         (True, None, True, does_not_raise()),
-        (False, None, False, pytest.raises(ValueError, match="^Field cannot be null$")),
+        (False, None, False, pytest.raises(ValueError, match="^Invalid Request$")),
         (False, "val", False, does_not_raise()),
     ]
 )

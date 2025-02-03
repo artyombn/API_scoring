@@ -16,9 +16,10 @@ class Field:
         self._value = val
 
     def check_none(self, val):
-        if val is None:
+        from api import ERRORS, INVALID_REQUEST
+        if val is None or val == "":
             if not self.nullable:
-                raise ValueError("Field cannot be null")
+                raise ValueError(ERRORS[INVALID_REQUEST])
             return True
         return False
 
@@ -64,21 +65,20 @@ class Field:
     def validate_date_field(self, val):
         if self.check_none(val):
             return val
+
         if not isinstance(val, str):
             raise TypeError("Date format must be str")
+
         try:
-            datetime.datetime.strptime(val, "%d.%m.%Y")
+            value_date = datetime.datetime.strptime(val, "%d.%m.%Y")
         except ValueError:
             raise ValueError("Time data does not match format '%d.%m.%Y'")
-        return val
 
-    def validate_birthday_field(self, val):
-        if val is not None:
-            date_now = datetime.datetime.now()
-            value_date = datetime.datetime.strptime(val, "%d.%m.%Y")
-            difference = date_now - value_date
-            if difference.days > 25570:
-                raise ValueError("Birthday must be < 70 years")
+        date_now = datetime.datetime.now()
+        difference = date_now - value_date
+        if difference.days > 25570:
+            raise ValueError("Birthday must be < 70 years")
+
         return val
 
     def validate_gender_field(self, val):
@@ -86,13 +86,15 @@ class Field:
             return val
         if not isinstance(val, int):
             raise TypeError("Field must be int")
-        elif not val in [0, 1, 2]:
+        if val not in [0, 1, 2]:
             raise ValueError("Value must be 0 or 1 or 2")
         return val
 
     def validate_client_ids_field(self, val):
         if not isinstance(val, list):
             raise TypeError("Field must be a list")
-        elif not all(isinstance(x, int) for x in val):
+        if len(val) == 0:
+            raise ValueError("List cannot be empty")
+        if not all(isinstance(x, int) for x in val):
             raise TypeError("All list items must be int")
         return val

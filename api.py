@@ -73,7 +73,6 @@ class DateField(Field):
 class BirthDayField(DateField):
     def validate(self, value):
         super().validate_date_field(value)
-        super().validate_birthday_field(value)
         return value
 
 
@@ -114,6 +113,16 @@ class MethodRequest(object):
     arguments = ArgumentsField(required=True, nullable=True)
     method = CharField(required=True, nullable=False)
 
+    def validate(self):
+        if not self.login:
+            raise ValueError(ERRORS[INVALID_REQUEST])
+        if not self.token:
+            raise ValueError(ERRORS[INVALID_REQUEST])
+        if not self.method:
+            raise ValueError(ERRORS[INVALID_REQUEST])
+        if not self.arguments:
+            raise ValueError(ERRORS[INVALID_REQUEST])
+
     @property
     def is_admin(self):
         return self.login == ADMIN_LOGIN
@@ -133,13 +142,20 @@ def method_handler(request, ctx, store):
     body = request.get("body", {})
     method = body.get("method")
 
+
     method_request = MethodRequest()
+
     try:
-        method_request.login = body.get("login")
-        method_request.token = body.get("token")
-        method_request.account = body.get("account", None)
+        method_request.login = body.get("login", "")
+        method_request.token = body.get("token", "")
+        method_request.account = body.get("account", "")
         method_request.method = method
         method_request.arguments = body.get("arguments", {})
+
+        if not check_auth(method_request):
+            return ERRORS[FORBIDDEN], FORBIDDEN
+
+        method_request.validate()
     except ValueError as e:
         return str(e), INVALID_REQUEST
 
@@ -147,30 +163,33 @@ def method_handler(request, ctx, store):
         online_score_request = OnlineScoreRequest()
 
         try:
-            online_score_request.phone = method_request.arguments.get("phone", None)
-            online_score_request.email = method_request.arguments.get("email", None)
-            online_score_request.birthday = method_request.arguments.get("birthday", None)
-            online_score_request.gender = method_request.arguments.get("gender", None)
-            online_score_request.first_name = method_request.arguments.get("first_name", None)
-            online_score_request.last_name = method_request.arguments.get("last_name", None)
+            online_score_request.phone = method_request.arguments.get("phone", "")
+            online_score_request.email = method_request.arguments.get("email", "")
+            online_score_request.birthday = method_request.arguments.get("birthday", "")
+            online_score_request.gender = method_request.arguments.get("gender", "")
+            online_score_request.first_name = method_request.arguments.get("first_name", "")
+            online_score_request.last_name = method_request.arguments.get("last_name", "")
+
+            arguments_list = []
+            for argument in online_score_request.to_dict():
+                if online_score_request.to_dict()[argument] is None or online_score_request.to_dict()[argument] == "":
+                    continue
+                arguments_list.append(argument)
+            ctx["has"] = arguments_list[:-1]
+
+            if not {"phone", "email"}.issubset(set(ctx["has"])):
+                if not {"first_name", "last_name"}.issubset(set(ctx["has"])):
+                    if not {"gender", "birthday"}.issubset(set(ctx["has"])):
+                        raise ValueError(ERRORS[INVALID_REQUEST])
+
         except TypeError as e:
             return str(e), INVALID_REQUEST
         except ValueError as e:
             return str(e), INVALID_REQUEST
 
-        arguments_list = []
-        for argument in online_score_request.to_dict():
-            if online_score_request.to_dict()[argument] is None:
-                continue
-            arguments_list.append(argument)
-        ctx["has"] = arguments_list[:-1]
-
         if method_request.is_admin:
             response = {"score": 42}
         else:
-            if not check_auth(method_request):
-                return ERRORS[FORBIDDEN], FORBIDDEN
-
             score = get_score(store,
                               online_score_request.phone,
                               online_score_request.email,
@@ -187,13 +206,13 @@ def method_handler(request, ctx, store):
         try:
             clients_interests_request.client_ids = method_request.arguments.get("client_ids")
             clients_interests_request.date = method_request.arguments.get("date", None)
+
+            ctx["nclients"] = len(clients_interests_request.client_ids)
+
         except TypeError as e:
             return str(e), INVALID_REQUEST
         except ValueError as e:
             return str(e), INVALID_REQUEST
-
-        if not method_request.is_admin:
-            return ERRORS[FORBIDDEN], FORBIDDEN
 
         clients_interests_dict = {}
         for client_id in clients_interests_request.client_ids:
